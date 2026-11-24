@@ -1,0 +1,26 @@
+node_modules
+
+# Output
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Vite
+vite.config.ts.timestamp-*
+.direnv
+
+# SQLite
+*.db
+*.db-*
+
+# Your own: the link list and the CA bundle (both still ship with deploy/deploy.sh)
+links.json
+ca.pem

@@ -1,0 +1,8 @@
+[
+	{"group":"fav","name":"Jellyfin","href":"https://jellyfin.example.lan","icon":"jellyfin"},
+	{"group":"fav","name":"Sonarr","href":"https://sonarr.example.lan","icon":"sonarr"},
+	{"group":"work","name":"Gitea","href":"https://gitea.example.lan","icon":"gitea"},
+	{"group":"web","name":"GitHub","href":"https://github.com/","icon":"github"},
+	{"group":"infra","name":"Proxmox","href":"https://pve.example.lan","icon":"proxmox"},
+	{"group":"infra","name":"NAS","href":"https://192.168.1.11","icon":"truenas-scale","check":"http://192.168.1.11/"}
+]

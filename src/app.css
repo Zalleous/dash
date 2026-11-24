@@ -1,0 +1,526 @@
+@import '@fontsource-variable/tektur';
+@import '@fontsource-variable/host-grotesk';
+@import '@fontsource-variable/jetbrains-mono';
+
+/* The whole page is a blueprint sheet: pale ink on blueprint blue by day, on a deeper navy at night. Red means
+   something needs attention: a fill behind error text (.err, .mk.bad), and red type for the ✱ mark and for a name
+   or value in trouble. Light blue means live, now or yours. */
+:root {
+	--paper: #12306b;
+	--ink: #e9eefb;
+	--mute: #a8b8e0;
+	--rule: color-mix(in srgb, var(--ink) 35%, var(--paper));
+	--track: color-mix(in srgb, var(--ink) 18%, var(--paper));
+	--sheet: color-mix(in srgb, var(--ink) 8%, var(--paper));
+	--signal: #ff4d3d;
+	--on-signal: #141414;
+	--live: #7fd0ff;
+	--on-live: var(--paper);
+	--cat-0: var(--live);
+	--cat-1: #f2c879;
+	--cat-2: #9fe3c3;
+	--hatch: repeating-linear-gradient(-45deg, var(--mute) 0 1px, transparent 1px 4px);
+	--font-text: 'Host Grotesk Variable', system-ui, sans-serif;
+	--font-data: 'JetBrains Mono Variable', ui-monospace, monospace;
+	--font-display: 'Tektur Variable', var(--font-text);
+	color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		--paper: #0a1730;
+		--ink: #d6deef;
+		--mute: #8597c2;
+		--live: #6cc3f2;
+	}
+}
+
+:root[data-theme='dark'] {
+	--paper: #0a1730;
+	--ink: #d6deef;
+	--mute: #8597c2;
+	--live: #6cc3f2;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	min-height: 100%;
+}
+
+/* Tiles fly in from off screen and out of it (motion.ts). body clips them, so a tile out past the right or the
+   bottom adds no scrollbar, and the phone does not zoom out to fit it. html's own clip keeps body's from passing
+   to the viewport, which would stop the page scrolling; the page never scrolls sideways anyway. */
+html {
+	overflow-x: clip;
+}
+
+body {
+	overflow: clip;
+	background: var(--paper);
+	color: var(--ink);
+	font-family: var(--font-text);
+	font-size: 15px;
+	line-height: 1.45;
+	font-variant-numeric: tabular-nums;
+	caret-color: var(--ink);
+	accent-color: var(--ink);
+	scrollbar-color: var(--rule) transparent;
+	scrollbar-width: thin;
+	-webkit-font-smoothing: antialiased;
+}
+
+::selection {
+	background: var(--ink);
+	color: var(--paper);
+}
+
+:focus-visible {
+	outline: 2px solid var(--live);
+	outline-offset: 2px;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+a[href]:hover {
+	text-decoration: underline;
+	text-decoration-thickness: 1px;
+	text-underline-offset: 3px;
+}
+
+button,
+input {
+	font: inherit;
+	color: inherit;
+}
+
+input {
+	background: var(--sheet);
+	border: 1px solid var(--rule);
+	padding: 0.35rem 0.5rem;
+}
+
+input::placeholder {
+	color: var(--mute);
+}
+
+input:focus {
+	border-color: var(--live);
+	outline: none;
+}
+
+button {
+	background: none;
+	border: 1px solid var(--rule);
+	padding: 0.15rem 0.55rem;
+	cursor: pointer;
+	transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+
+button:hover {
+	border-color: var(--ink);
+}
+
+button:active {
+	background: var(--ink);
+	border-color: var(--ink);
+	color: var(--paper);
+}
+
+button.on {
+	background: var(--live);
+	border-color: var(--live);
+	color: var(--on-live);
+}
+
+.muted {
+	color: var(--mute);
+}
+
+.data {
+	font-family: var(--font-data);
+	font-size: 0.85em;
+}
+
+/* Shared status mark: filled = have/done/ok, hatched = partial/running, empty = pending, .bad = needs you. */
+.mk {
+	display: inline-block;
+	flex: none;
+	width: 0.55rem;
+	height: 0.55rem;
+	border: 1px solid var(--ink);
+}
+
+.mk.fill {
+	background: var(--ink);
+}
+
+.mk.hatch {
+	background: var(--hatch);
+}
+
+.mk.bad {
+	background: var(--signal);
+	border-color: var(--signal);
+}
+
+.err {
+	width: fit-content;
+	padding: 0 0.35rem;
+	background: var(--signal);
+	color: var(--on-signal);
+}
+
+/* Tick box of a board card, in the todo and deadlines panels. Ticking (tick.ts) erases the row: a caret sweeps
+   right to left, and --e is how much of the row, from the right, it has erased. */
+.check {
+	position: relative;
+	width: 0.95rem;
+	height: 0.95rem;
+	padding: 0;
+	flex: none;
+	border-color: var(--ink);
+}
+
+.check::after {
+	content: '';
+	position: absolute;
+	inset: -0.6rem;
+}
+
+.check:hover,
+.ticking .check {
+	background: var(--ink);
+}
+
+.ticking {
+	position: relative;
+	clip-path: inset(-2px var(--e) -2px 0);
+	animation: erase 450ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+/* The caret at the edge: a tick's erase, and a new todo's write-in (Todo.svelte). */
+.ticking::after,
+.writing::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: var(--e);
+	width: 2px;
+	background: var(--live);
+}
+
+@property --e {
+	syntax: '<percentage>';
+	inherits: true;
+	initial-value: 0%;
+}
+
+@keyframes erase {
+	to {
+		--e: 100%;
+	}
+}
+
+/* The drawing area: the board's grid. Each column of the board (layout.ts) is a major line and six minor ones;
+   the rows are 12 px, a major line every 72 px. Rows and columns are two layers under everything else, so that
+   the boot can plot each set. Each layer's shadow is its closing edge, bottom and right, where the tiles' own
+   bottom and right rules fall. The phone has 12 px squares. --label is what small text stands on, so that it
+   knocks the grid out behind it; the phone's band clears it. */
+.board {
+	--label: var(--paper);
+	--minor: color-mix(in srgb, var(--ink) 7%, transparent);
+	--major: color-mix(in srgb, var(--ink) 15%, transparent);
+	--cx: calc(100% / 144);
+	--mx: calc(100% / 24);
+	--my: 72px;
+	position: relative;
+	isolation: isolate;
+}
+
+.board::before,
+.board::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+}
+
+.board::before {
+	background:
+		linear-gradient(var(--major) 1px, transparent 1px) 0 0 / 100% var(--my),
+		linear-gradient(var(--minor) 1px, transparent 1px) 0 0 / 100% 12px;
+	box-shadow: 0 1px var(--major);
+	transform-origin: left;
+}
+
+.board::after {
+	background:
+		linear-gradient(90deg, var(--major) 1px, transparent 1px) 0 0 / var(--mx) 100%,
+		linear-gradient(90deg, var(--minor) 1px, transparent 1px) 0 0 / var(--cx) 100%;
+	box-shadow: 1px 0 var(--major);
+	transform-origin: top;
+}
+
+@media (max-width: 700px) {
+	.board {
+		--cx: 12px;
+		--mx: 60px;
+		--my: 60px;
+		--label: transparent;
+	}
+}
+
+/* A gauge's fill (Gauge.svelte). Registered so it can ease; it inherits, so the cells inside follow it. */
+@property --w {
+	syntax: '<percentage>';
+	inherits: true;
+	initial-value: 0%;
+}
+
+/* A card's priority (quickadd.ts LEVEL). */
+.p1 {
+	color: var(--ink);
+	font-weight: 700;
+}
+
+.p2 {
+	color: var(--ink);
+}
+
+/* Blinks a mark twice when it appears, then holds still. */
+.mark {
+	display: inline-block;
+	animation: flash 0.5s step-end 2;
+}
+
+@keyframes flash {
+	0% {
+		opacity: 0;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+/* Boot sequence. The CSS part starts at first paint instead of waiting for the app to load, and runs on
+   transforms, opacity and stepped clips, so it stays smooth while the app hydrates. A plotter draws the sheet:
+   the grid rows left to right, then its columns top down, then the drawing's title block types in. Tile by tile,
+   in a wave from top left (--x and --y are the tile's cell, set by Panel.svelte), the frame shows, the top rule
+   draws, the title strip types in and the body comes up. Bare tiles have none of that and stand from the
+   start. app.html sets .boot (not under reduced motion) and drops it after 3 s; a key press or click drops it
+   sooner, and GSAP decodes the page title meanwhile (motion.ts boot()). */
+@property --d {
+	syntax: '<time>';
+	inherits: false;
+	initial-value: 0s;
+}
+
+.panel {
+	--d: calc(450ms + (var(--x, 0) / 6 + 1 + var(--y, 0) / 10) * 90ms);
+}
+
+.boot .panel:not(.bare) {
+	animation: frame 0.5s ease-out var(--d) backwards;
+}
+
+.boot .board::before,
+.boot .panel::after {
+	animation: draw-x 0.8s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+.boot .board::after {
+	animation: draw-y 0.8s cubic-bezier(0.65, 0, 0.35, 1) 0.2s both;
+}
+
+.boot [data-id='title'] dl {
+	animation: wipe 0.5s steps(18) 0.7s both;
+}
+
+.boot .panel::after {
+	animation-duration: 0.5s;
+	animation-delay: var(--d);
+}
+
+.boot .panel header {
+	animation: wipe 0.45s steps(16) calc(var(--d) + 0.2s) both;
+}
+
+.boot .panel:not(.bare) > :not(header) {
+	animation: show 0.4s ease-out calc(var(--d) + 0.4s) both;
+}
+
+.boot .panel::before {
+	animation: cross 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) calc(var(--d) + 0.3s) backwards;
+}
+
+@keyframes draw-x {
+	from {
+		transform: scaleX(0);
+	}
+}
+
+@keyframes draw-y {
+	from {
+		transform: scaleY(0);
+	}
+}
+
+/* Plots a thing in, left to right unless its --wipe starts another way (the boot, Carousel, the homelab guests,
+   the uptime strips). */
+@keyframes wipe {
+	from {
+		clip-path: var(--wipe, inset(0 100% 0 0));
+	}
+	to {
+		clip-path: inset(0);
+	}
+}
+
+@keyframes frame {
+	from {
+		border-color: transparent;
+	}
+}
+
+@keyframes show {
+	from {
+		opacity: 0;
+	}
+}
+
+@keyframes cross {
+	from {
+		transform: scale(0) rotate(90deg);
+	}
+}
+
+/* Add-todo orb (orb.ts): the typed text is highlighted, squashed into a cube and pulled to where it was added. */
+.orb-layer {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	pointer-events: none;
+	overflow: hidden;
+}
+
+.orb-layer > * {
+	position: absolute;
+	left: 0;
+	top: 0;
+}
+
+.orb-clip {
+	overflow: hidden;
+	background: var(--live);
+	color: var(--on-live);
+}
+
+.orb-clip span {
+	position: absolute;
+	top: 0;
+	white-space: pre;
+}
+
+.orb-caret {
+	width: 2px;
+	background: var(--live);
+}
+
+.orb-cube {
+	width: 16px;
+	height: 16px;
+	perspective: 80px;
+}
+
+.orb-cube b {
+	position: absolute;
+	inset: 0;
+	transform-style: preserve-3d;
+}
+
+.orb-cube i {
+	position: absolute;
+	inset: 0;
+	border: 1.5px solid var(--live);
+	background: color-mix(in srgb, var(--live) 30%, transparent);
+}
+
+.orb-cube i:nth-child(1) {
+	transform: translateZ(8px);
+}
+
+.orb-cube i:nth-child(2) {
+	transform: rotateY(180deg) translateZ(8px);
+}
+
+.orb-cube i:nth-child(3) {
+	transform: rotateY(90deg) translateZ(8px);
+}
+
+.orb-cube i:nth-child(4) {
+	transform: rotateY(-90deg) translateZ(8px);
+}
+
+.orb-cube i:nth-child(5) {
+	transform: rotateX(90deg) translateZ(8px);
+}
+
+.orb-cube i:nth-child(6) {
+	transform: rotateX(-90deg) translateZ(8px);
+}
+
+.orb-cube.fail i {
+	border-color: var(--signal);
+	background: color-mix(in srgb, var(--signal) 30%, transparent);
+}
+
+.orb-fx {
+	width: 100%;
+	height: 100%;
+}
+
+.orb-fx path {
+	fill: var(--live);
+	opacity: 0.55;
+}
+
+.orb-fx line {
+	stroke: var(--live);
+	stroke-linecap: round;
+}
+
+.landed {
+	animation: landed 0.8s ease-out;
+}
+
+@keyframes landed {
+	from {
+		background: var(--live);
+		color: var(--on-live);
+	}
+}
+
+@media (pointer: coarse) {
+	button:not(.check) {
+		min-height: 2.25rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation: none !important;
+		transition: none !important;
+	}
+}

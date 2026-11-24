@@ -1,0 +1,12 @@
+node_modules
+.svelte-kit
+build
+.git
+.direnv
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+links.json
+ca.pem

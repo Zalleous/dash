@@ -1,0 +1,21 @@
+#!/sbin/openrc-run
+
+name="dash"
+description="Personal dashboard"
+supervisor="supervise-daemon"
+command="/usr/bin/node"
+command_args="--env-file=/etc/dash.env build"
+command_user="dash:dash"
+directory="/opt/dash"
+output_log="/var/log/dash.log"
+error_log="/var/log/dash.log"
+respawn_delay=5
+
+depend() {
+	need net
+}
+
+start_pre() {
+	if [ -f /opt/dash/ca.pem ]; then export NODE_EXTRA_CA_CERTS=/opt/dash/ca.pem; fi
+	checkpath -f -o dash:dash -m 644 /var/log/dash.log
+}

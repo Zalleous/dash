@@ -1,0 +1,17 @@
+# An example: copy to compose.yaml, fill .env from .env.example, and copy links.example.json to links.json
+# (or drop that mount: a missing file would be mounted as an empty folder).
+services:
+  dash:
+    build: .
+    ports:
+      - 3000:3000
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - dash-data:/data
+      - ./links.json:/app/links.json:ro
+    restart: unless-stopped
+
+volumes:
+  dash-data:
