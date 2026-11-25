@@ -30,9 +30,11 @@ A panel whose keys are missing shows `n/c`, and its tooltip names the keys. Ever
 The `glance` preset shows every panel except focus, dev and uptime. Edit mode adds them. [DESIGN.md](DESIGN.md)
 describes the board, the presets and how the page looks and moves.
 
-An alert banner under the header lists what needs you: a link or a Proxmox guest down, a VPN leak or a bad VPN status,
+The alerts panel lists what needs you: a link or a Proxmox guest down, a VPN leak or a bad VPN status,
 an antivirus finding, an unhealthy or nearly full pool, a hot CPU, overdue todos, a failed CI run, a stuck download.
-It only sees the answers that the panels on the page have fetched, and the uptime probes.
+It only sees the answers that the panels on the page have fetched, and the uptime probes. It has no spot of its own:
+edit mode adds it to a preset. The `refresh` button in the header (or `refresh` in Ctrl+K) makes every panel fetch
+again, past the server's caches.
 
 ## Quick start
 
@@ -177,7 +179,7 @@ A list of your services. Copy `links.example.json` to start.
 
 | Field | Required | Used by |
 | --- | --- | --- |
-| `name` | Yes | Ctrl+K; the uptime row; the banner's "down" alert. The media panel and the banner find services by name (see Media). |
+| `name` | Yes | Ctrl+K; the uptime row; the alerts' "down" alert. The media panel and the alerts find services by name (see Media). |
 | `href` | Yes | Ctrl+K opens it in a new tab. Uptime probes it, unless `check` is set. The "down" alert links to it. |
 | `group` | Yes | The hint beside the name in Ctrl+K. Links in the group `web` are not probed. Other names are free. |
 | `icon` | No | An icon name from [dashboard-icons](https://github.com/homarr-labs/dashboard-icons), shown in Ctrl+K and loaded from the jsDelivr CDN |

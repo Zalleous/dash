@@ -77,7 +77,8 @@ clock, "now and next" (events) and the weather are bare. Together they fill the 
 - At a lock, dimension lines draw in with the line ink, from factory figures in mm: side shows wheelbase (2595),
   length (4620) and height (1310); plan shows length and width (1745); front and rear show width and height.
 - Part names follow: a dot, a leader, a shelf, the label. A view shows all of its names or none, and only if they fit.
-- While a red alert stands, the car blinks its lights in `--signal`: half a second on, half a second off.
+- While a red alert stands, the car blinks its lights in `--signal`: half a second on, half a second off. The alerts
+  panel tells it, so the lights blink only while that panel is on the board (shown or hidden).
 - Without WebGL2 the tile stays empty. A lost WebGL context is not restored.
 - On the phone the car is a small box beside the time, in line ink only, with no dimensions.
 
@@ -112,7 +113,7 @@ Ruled cells, like the title block of a drawing: drawing `Supra MA70 / 1986.5`; v
 - In the header strip: a panel passes `attention` to show `✱` after its title. Screen readers read "needs
   attention". The todo panel does this while a card is overdue, the deadlines panel while one is due within a day.
 - In the body: before an event that starts within 15 minutes (events), a homelab value in trouble, a stuck download
-  (media), a service that is down (uptime), and at the head of the alert banner.
+  (media), a service that is down (uptime), and before each alert in the alerts panel.
 - The header mark and the events mark blink twice when they appear (0.5 s steps), then hold still (`.mark`).
 
 ### States (src/lib/Status.svelte)
@@ -140,7 +141,7 @@ The weather panel shows its own error line, `weather: <error>`, and has no `n/c`
 ## Red
 
 - Red is `--signal` and nothing else. There is no amber or yellow anywhere.
-- Red fills: `.err`, `.mk.bad`, a red alert banner. Text on a red fill is `--on-signal`, because red type on the
+- Red fills: `.err`, `.mk.bad`, a red alert in the alerts panel. Text on a red fill is `--on-signal`, because red type on the
   blue sheet is too faint for small text.
 - Red type: the `✱` mark, and a name or value in trouble: a service that is down, a deadline 2 days away or less,
   an overdue todo's date, a failed CI run, a homelab value or gauge over its limit, a stuck download.
@@ -148,14 +149,16 @@ The weather panel shows its own error line, `weather: <error>`, and has no `n/c`
 - In edit mode, a tile that would overlap another gets a red border.
 - Nothing flashes more than 3 times a second: the mark blinks twice in one second, the car's lights once a second.
 
-### The alert banner (src/lib/Alerts.svelte, src/lib/server/alerts.ts)
+### The alerts panel (src/lib/panels/alerts/, src/lib/server/alerts.ts)
 
-- Polled every 20 s. It sits under the header: `✱ N need(s) you`, then one link per alert.
+- Polled every 20 s. It has no home: edit mode adds it. One row per alert, `✱` then the text, a link when the alert
+  has one. Facts: `urgent` (the red ones) and `total`. The title strip shows `✱` while a red alert stands. With
+  none, the empty state says "all clear".
 - Red alerts: a service down (it links to the service), a VPN leak or bad VPN status, an antivirus status other
   than `CLEAN`, an unhealthy pool, a failed CI run.
 - Yellow alerts: media guards stale (more than 20 minutes), a pool more than 85% full, the CPU at or over its
   Glances warning, overdue todos, a stuck download (it links to the `qBittorrent` link).
-- A banner with a red alert is a red fill. A banner with only yellow alerts is a red outline with red text.
+- A red alert is a red fill. A yellow alert is red type.
 - Alerts reuse the last answers the panels fetched and the uptime history. They make no requests of their own.
 
 ## The board (src/lib/Board.svelte, src/lib/server/sources/presets.ts)
@@ -309,6 +312,8 @@ Secrets never go in settings. They stay in the environment.
 - `src/lib/server/http.ts` has the helpers: `json()` fetches with an 8 s timeout, `cached(key, ms, fn)` keeps an
   answer, `env('KEY', …)` reads keys and throws `not set up: KEY` when one is missing (that shows as `n/c`).
   `service()` makes a fetcher for an API whose URL and key come from env.
+- The `refresh` button in the header, or `refresh` in Ctrl+K, posts `/api/refresh`: `expire()` makes every cached
+  answer stale (the last answers stay for the alerts), then every poll loads again, the alerts last (`renew()`).
 - Sources several panels use live in `src/lib/server/sources/`. A name is used once across all of them; a name used
   twice stops the server at startup.
 - Settings reach the source, not the client: `poll(api('<source>', id), ms)` (`src/lib/panels/index.ts`) asks

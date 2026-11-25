@@ -55,6 +55,14 @@ function make<T>(url: string, ms: number) {
 /* Every poll again, now: after a panel's settings change, its sources answer differently. */
 export const refresh = () => shared.forEach((p) => p.reload());
 
+/* Fresh answers from every source (the refresh button, Ctrl+K): the server drops its caches first. The alerts go
+   last, as they are built from the other sources' answers. */
+export async function renew() {
+	await post('refresh', {});
+	await Promise.all([...shared].filter(([url]) => url !== '/api/alerts').map(([, p]) => p.reload()));
+	await shared.get('/api/alerts')?.reload();
+}
+
 export async function post(source: string, body: object) {
 	const res = await fetch(`/api/${source}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 	const out = await res.json();

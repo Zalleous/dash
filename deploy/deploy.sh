@@ -16,7 +16,7 @@ CT=$(key DEPLOY_CT)
 	grep -v -e '^NODE_EXTRA_CA_CERTS=' -e '^DEPLOY_' .env
 	printf '%s\n' DB_PATH=/var/lib/dash/dash.db HOST=0.0.0.0 PORT=3000
 } | ssh "$SSH" "pct exec $CT -- sh -c 'umask 027 && cat > /etc/dash.env && chgrp dash /etc/dash.env && chmod 640 /etc/dash.env'"
-tar -c --exclude=node_modules --exclude=.svelte-kit --exclude=build --exclude=.git --exclude=.direnv --exclude=.env --exclude='*.db' . |
+tar -c --exclude=node_modules --exclude=.svelte-kit --exclude=build --exclude=.git --exclude=.direnv --exclude=.claude --exclude=.env --exclude='*.db' . |
 	ssh "$SSH" "pct exec $CT -- sh -c 'set -e
 		rm -rf /opt/dash/src /opt/dash/static
 		mkdir -p /opt/dash && tar -x --no-same-owner -C /opt/dash

@@ -14,6 +14,10 @@ export function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Pro
 
 export const peek = <T>(key: string) => store.get(key)?.last as T | undefined;
 
+/* Every answer stale, so the next read of each fetches again (the refresh action). The entries stay, and with them
+   the last answers that peek() gives the alerts. */
+export const expire = () => store.forEach((e) => (e.at = 0));
+
 export function forget(prefix: string) {
 	for (const key of store.keys()) if (key.startsWith(prefix)) store.delete(key);
 }

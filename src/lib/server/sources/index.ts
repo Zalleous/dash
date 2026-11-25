@@ -1,4 +1,4 @@
-import { cached, peek } from '#lib/server/http.ts';
+import { cached, expire, peek } from '#lib/server/http.ts';
 import { compose } from '#lib/server/alerts.ts';
 import { down, strips } from '#lib/server/uptime.ts';
 import type { raw } from '#lib/panels/dev/data.server.ts';
@@ -51,7 +51,7 @@ export const sources = merge<Source>(
 	own.map(([, o]) => o.sources)
 );
 
-export const actions = merge<Action>({ vault, timer: timerAction, presets: presetsAction }, own.map(([, o]) => o.actions));
+export const actions = merge<Action>({ vault, timer: timerAction, presets: presetsAction, refresh: async () => (expire(), {}) }, own.map(([, o]) => o.actions));
 
 /* The kind each panel's own source belongs to, so that /api/<source>?i=<id> serves that kind's instances only. */
 export const kinds: Record<string, string> = Object.fromEntries(own.flatMap(([path, o]) => Object.keys(o.sources ?? {}).map((name) => [name, path.split('/')[3]])));

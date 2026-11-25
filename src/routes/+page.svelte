@@ -1,8 +1,9 @@
 <script lang="ts">
-	import Alerts from '#lib/Alerts.svelte';
 	import Board from '#lib/Board.svelte';
+	import { commands } from '#lib/commands.svelte.ts';
 	import { boot } from '#lib/motion.ts';
 	import Palette from '#lib/Palette.svelte';
+	import { renew } from '#lib/poll.svelte.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -10,6 +11,17 @@
 	let main: HTMLElement;
 	$effect(() => boot(main));
 	let palette: Palette;
+
+	let renewing = $state(false);
+	async function refresh() {
+		renewing = true;
+		try {
+			await renew();
+		} finally {
+			renewing = false;
+		}
+	}
+	commands(() => [{ label: 'refresh', hint: 'every panel, fresh from its source', run: refresh }]);
 
 	const MODES = ['auto', 'light', 'dark'] as const;
 	let theme = $state<(typeof MODES)[number]>('auto');
@@ -39,10 +51,10 @@
 			<header class="bar">
 				<h1 class="data">{data.name.toLowerCase()}</h1>
 				{@render controls()}
+				<button onclick={refresh} disabled={renewing} title="Every panel fetches again, past the server's caches">{renewing ? 'refresh…' : 'refresh'}</button>
 				<button onclick={() => palette.show()} title="Links, timers, todos: ctrl+k or /">ctrl+k</button>
 				<button onclick={cycle} title="Theme: auto follows the system">theme / {theme}</button>
 			</header>
-			<Alerts />
 		{/snippet}
 	</Board>
 </main>
