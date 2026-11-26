@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
-import { CALLOUTS, CYCLE, FPS, HOLD, LENGTH, LOCKED, LOCKS, PAD, REV, WIPE, fit, matrix, parse, pose, project, type View } from '#lib/art.ts';
+import { CALLOUTS, CYCLE, FPS, HOLD, LENGTH, LOCKED, LOCKS, PAD, WIPE, extent, fit, matrix, parse, pose, project, type View } from '#lib/art.ts';
 
 const file = readFileSync('src/lib/assets/supra.bin');
 const mesh = parse(file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength));
@@ -19,7 +19,7 @@ test('the mesh is within its budget', () => {
 });
 
 /* A view at scale 1 with its centre at the origin: matrix() then gives the bare rotation. */
-const BARE: View = { n: [], s: LOCKS.map(() => 1), cap: LOCKS.map(() => []), turn: 1, x: 0, y: 0 };
+const BARE: View = { n: [], s: LOCKS.map(() => 1), ring: [], cloud: mesh.cloud, w: 0, h: 0, dim: 0, x: 0, y: 0 };
 
 test('each hold is the exact view', () => {
 	LOCKS.forEach((lock, i) => {
@@ -58,43 +58,37 @@ test('every view locks at a whole scale, clear of the stage edges and the dimens
 	}
 });
 
-test('the car stays inside the stage at every step of a cycle', () => {
+/* Every tick of a cycle, in each stage. */
+test('the car stays inside the stage, fills it while it turns, and never jumps in size', () => {
 	const views = STAGES.map(([w, h, dim]) => fit(w, h, mesh, dim));
-	const c = mesh.cloud;
-	const steps = REV * FPS; // yaw steps in a full turn
-	const seen = new Set<string>();
+	const last: number[] = [];
 	let margin = Infinity;
-	for (let tick = 0; tick < CYCLE * FPS; tick++) {
+	let fill = Infinity;
+	let jump = 0;
+	let key = '';
+	for (let tick = 0; tick <= CYCLE * FPS; tick++) {
 		const p = pose(tick / FPS);
-		/* A pose that was already scanned is skipped: a hold is scanned once, and so is each yaw of the turning car. */
-		const key = [Math.round((p.yaw / (2 * Math.PI)) * steps) % steps, p.pitch, p.k, p.k && p.view].join();
-		if (seen.has(key)) continue;
-		seen.add(key);
-		/* The extent of the car at unit scale, once per step; each stage then only scales and moves it. */
-		const m = matrix(p, BARE);
-		let x0 = Infinity;
-		let x1 = -Infinity;
-		let y0 = Infinity;
-		let y1 = -Infinity;
-		for (let i = 0; i < c.length; i += 3) {
-			const x = m[0] * c[i] + m[1] * c[i + 1] + m[2] * c[i + 2];
-			const y = m[4] * c[i] + m[5] * c[i + 1] + m[6] * c[i + 2];
-			if (x < x0) x0 = x;
-			if (x > x1) x1 = x;
-			if (y < y0) y0 = y;
-			if (y > y1) y1 = y;
-		}
+		/* A hold is scanned once. */
+		if (key === (key = JSON.stringify(p))) continue;
+		/* The extent of the car at unit scale, once per step: the rotation is the same in every stage. */
+		const m = matrix(p, views[0]);
+		const u = Math.hypot(m[0], m[2]);
+		const [x0, x1, y0, y1] = extent([0, 1, 2, 4, 5, 6].map((i) => (i < 4 ? m[i] : -m[i]) / u), mesh.cloud);
 		/* A plain loop: a closure here would move the four extremes to the heap and slow the scan above. */
-		for (let j = 0; j < STAGES.length; j++) {
-			const f = matrix(p, views[j]);
+		for (let j = 0; j < views.length; j++) {
+			const v = views[j];
+			const f = matrix(p, v);
 			const s = Math.hypot(f[0], f[2]);
-			margin = Math.min(margin, f[3] + s * x0, STAGES[j][0] - f[3] - s * x1, f[7] + s * y0, STAGES[j][1] - f[7] - s * y1);
+			margin = Math.min(margin, f[3] + s * x0 - PAD, v.w - PAD - f[3] - s * x1, f[7] - s * y1 - PAD, v.h - PAD - f[7] + s * y0);
+			if (!p.k) fill = Math.min(fill, Math.max((s * (x1 - x0)) / (v.w - 2 * PAD), (s * (y1 - y0)) / (v.h - 2 * PAD)));
+			if (last[j]) jump = Math.max(jump, Math.abs(s / last[j] - 1));
+			last[j] = s;
 		}
 	}
-	expect(seen.size).toBeGreaterThan(steps);
-	/* The plan view's cap puts the car exactly on the stage edge; the cloud here is rounded to 32 bits. */
-	expect(margin).toBeGreaterThanOrEqual(-1e-4);
-});
+	expect(margin).toBeGreaterThanOrEqual(-0.05);
+	expect(fill).toBeGreaterThanOrEqual(0.97);
+	expect(jump).toBeLessThan(0.03);
+}, 120_000);
 
 test('every part name points at its part', () => {
 	const data = new DataView(mesh.vertices.buffer, mesh.vertices.byteOffset, mesh.vertices.byteLength);

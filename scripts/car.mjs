@@ -4,7 +4,7 @@
    repo: PLAYWRIGHT_FROM names a folder whose node_modules has it, else it is imported as usual (a global or linked
    install). With PLAYWRIGHT_BROWSERS_PATH set, Chromium comes from that browser store, else Playwright picks its own.
 
-   PLAYWRIGHT_FROM=/path/to/a/project/with/playwright node scripts/car.mjs http://localhost:4173 [folder for screenshots]
+   PLAYWRIGHT_FROM=/path/to/a/project/with/playwright node scripts/car.mjs http://localhost:4173 [folder for screenshots] [light|dark]
 
    ponytail: the timings were read once, on the author's laptop GPU. They are targets for it, not gates for
    another one. Takes about 80 s, because it waits for the lock. */
@@ -14,7 +14,7 @@ import { CALLOUTS, HOLD, LOCKED, VIEWS, WIPE } from '../src/lib/art.ts';
 
 const from = process.env.PLAYWRIGHT_FROM;
 const { chromium } = from ? createRequire(`${from}/`)('playwright') : await import('playwright');
-const [url = 'http://localhost:4173', shots] = process.argv.slice(2);
+const [url = 'http://localhost:4173', shots, theme = 'light'] = process.argv.slice(2);
 const store = process.env.PLAYWRIGHT_BROWSERS_PATH;
 const browser = await chromium.launch({
 	executablePath: store && `${store}/${readdirSync(store).find((name) => /^chromium-\d+$/.test(name))}/chrome-linux64/chrome`,
@@ -42,7 +42,7 @@ function probe() {
 }
 
 async function open(options = {}, ...scripts) {
-	const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, ...options });
+	const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, colorScheme: theme, ...options });
 	for (const script of [probe, ...scripts]) await context.addInitScript(script);
 	const page = await context.newPage();
 	page.on('console', (m) => m.type() === 'error' && console.log(`     console: ${m.text()}`));
@@ -144,22 +144,25 @@ await shot(page, 'turn');
 
 await until(page, 18_000);
 const held = await draws(page, 3000);
-/* Under a red alert the lights blink, which is two draws a second. */
-const alert = await page.evaluate(() => !!document.querySelector('.alerts.red'));
+/* Under a red alert the lights blink, which is two draws a second. Only the alerts panel tells the car, so the blink
+   rules need it on the board. */
+const panel = await page.evaluate(() => !!document.querySelector('[data-id=alerts]'));
+const alert = await page.evaluate(() => !!document.querySelector('[data-id=alerts] .row.red'));
 rule(alert ? 'only the blink is drawn while the lock holds' : 'no draws while the lock holds', (alert ? held > 1.5 && held < 2.5 : held === 0) && (await page.evaluate(() => document.querySelector('.car').classList.contains('lock'))), held.toFixed(1));
 await shot(page, 'lock');
 const busy = await tasks(page); // read here: the measuring below is one long task of its own
 const shift = await page.evaluate(() => window.shift);
 
 /* A red alert, faked here: the lights blink once a second, and stop when the alert clears. */
-if (!alert) {
+if (!panel) console.log('skip  the blink: no alerts panel on the board');
+else if (!alert) {
 	await page.route('**/api/alerts', (route) => route.fulfill({ json: [{ level: 'red', text: 'rule check' }] }));
 	await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-	await page.waitForSelector('.alerts.red');
+	await page.waitForSelector('[data-id=alerts] .row.red', { state: 'attached' });
 	const blinking = await draws(page, 3000);
 	await page.unroute('**/api/alerts');
 	await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-	await page.waitForSelector('.alerts.red', { state: 'detached' });
+	await page.waitForSelector('[data-id=alerts] .row.red', { state: 'detached' });
 	await page.waitForTimeout(300);
 	const after = await draws(page, 1000);
 	rule('a red alert blinks the lights once a second, and only while it stands', blinking > 1.5 && blinking < 2.5 && after === 0, `${blinking.toFixed(1)} draws per second, then ${after.toFixed(1)}`);
@@ -197,13 +200,21 @@ for (const [i, view] of VIEWS.entries()) {
 				if (xs.length) return (xs[0] + xs.at(-1) + 1) / 2 / k;
 			}
 		});
-		/* A dimension with an upright label measures the outline from top to bottom, any other from left to right. */
-		const off = {};
+		/* A dimension with an upright label measures the outline from top to bottom, any other from left to right: the
+		   ink within 30 px of its own ends, so that beside its twin each end view has its own width. */
+		const across = ([a, b]) => {
+			let [u, v] = [Infinity, 0];
+			for (let y = y0; y <= y1; y++)
+				for (let x = Math.max(left, Math.floor((a - 30) * k)); x < Math.min(copy.width, Math.ceil((b + 30) * k)); x++) if (ink(x, y)) [u, v] = [Math.min(u, x), Math.max(v, x)];
+			return [u / k, (v + 1) / k];
+		};
+		const off = [];
 		for (const path of document.querySelectorAll('[data-id=car] path[data-dim]')) {
 			const name = path.dataset.dim;
+			const ends = path.dataset.ends.split(',').map(Number);
 			const upright = document.querySelector(`[data-id=car] span[data-dim="${name}"]`).classList.contains('up');
-			const outline = name === 'wheelbase' ? feet : upright ? [y0 / k, (y1 + 1) / k] : [x0 / k, (x1 + 1) / k];
-			off[name] = Math.max(...path.dataset.ends.split(',').map((v, i) => Math.abs(v - outline[i])));
+			const outline = name === 'wheelbase' ? feet : upright ? [y0 / k, (y1 + 1) / k] : across(ends);
+			off.push([name, Math.max(...ends.map((v, i) => Math.abs(v - outline[i])))]);
 		}
 		const tile = document.querySelector('[data-id=car]').getBoundingClientRect();
 		const labels = [...document.querySelectorAll('[data-id=car] .dims span')].map((span) => span.getBoundingClientRect());
@@ -214,8 +225,8 @@ for (const [i, view] of VIEWS.entries()) {
 			apart: labels.every((a, i) => labels.every((b, j) => j <= i || a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top))
 		};
 	}, t);
-	const off = Object.entries(seen.off).map(([name, v]) => `${name} ${v.toFixed(1)}`);
-	rule(`${view.name}: dimension ends are within 2 px of the drawn outline`, off.length > 1 && Object.values(seen.off).every((v) => v <= 2), off.join(', '));
+	const off = seen.off.map(([name, v]) => `${name} ${v.toFixed(1)}`);
+	rule(`${view.name}: dimension ends are within 2 px of the drawn outline`, off.length > 1 && seen.off.every(([, v]) => v <= 2), off.join(', '));
 	const names = CALLOUTS[view.name].length;
 	rule(`${view.name}: every part name shows, inside the car's tile and clear of the other labels`, seen.names === names && seen.inside && seen.apart, `${seen.names} of ${names}${seen.inside ? '' : ', a label leaves the tile'}${seen.apart ? '' : ', two labels meet'}`);
 	const red = await reds(page, t);

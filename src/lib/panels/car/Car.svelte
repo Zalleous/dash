@@ -11,7 +11,7 @@
 </script>
 
 <script lang="ts">
-	import { CALLOUTS, VIEWS, project, start } from '#lib/art.ts';
+	import { CALLOUTS, PAD, VIEWS, project, start } from '#lib/art.ts';
 	import Panel from '#lib/Panel.svelte';
 	/* ponytail: the mesh goes out uncompressed (764 KB, once; the hashed file is cached for good). Give it an
 	   extension that adapter-node precompresses if the first load ever matters. */
@@ -23,6 +23,27 @@
 	   lower, its wheelbase is 44 mm longer and its body is about 45 mm wider. */
 	const SPEC = { wheelbase: 2595, length: 4620, width: 1745, height: 1310 };
 	const UNIT = SPEC.length / 2; // mm in one unit of the mesh
+
+	/* Factory figures for the 1986.5 car with the 7M-GE, each one found in the two sources after it: the engine
+	   beside the front view, the drivetrain and the chassis beside the rear view. Compression, torque, final drive,
+	   curb weight and track are left out: their sources disagree, or only one has them. A field is its name, then
+	   its lines; a line of at most 17 characters never wraps in a column of COL px. */
+	const FIGURES: Partial<Record<string, string[][]>> = {
+		front: [
+			['engine', '7M-GE inline 6', 'DOHC, 24 valves'], // Consumer Guide, Cheap Wheels: 1986-1992 Toyota Supra; netcarshow.com, 1987 Toyota Supra
+			['displacement', '2954 cc'], // Wikipedia, Toyota M engine; cygnusx1.net, Supra statistics
+			['bore × stroke', '83.0 × 91.0 mm'], // Wikipedia, Toyota M engine; cygnusx1.net, Supra statistics
+			['power', '200 hp @ 6000 rpm'] // Le Guide de l'auto 1987 (guideautoweb.com, article 28583); Hagerty, 1986-93 Toyota Supra A70 buyer's guide
+		],
+		rear: [
+			['manual', 'W58 5-speed'], // Wikipedia, Toyota Supra; cygnusx1.net, Supra statistics
+			['automatic', 'A340E 4-speed'], // Wikipedia, Toyota Supra; cygnusx1.net, Supra statistics
+			['tyres', '225/50VR16'], // Le Guide de l'auto 1987; velocityjournal.com, model 32673 specifications
+			['brakes', 'vented discs', 'front and rear'], // cygnusx1.net, Supra statistics; velocityjournal.com, model 32673 specifications
+			['fuel tank', '70 L'] // Le Guide de l'auto 1987; cygnusx1.net, Supra statistics (18.5 US gal)
+		]
+	};
+	const COL = 150;
 
 	let root: HTMLElement;
 	let canvas: HTMLCanvasElement;
@@ -78,6 +99,17 @@
 		if (name === 'top') return [flat('length', x0, x1, y1 + 16), tall('width', x1 + 4, Math.max(x1 + 18, ...leaders.map((l) => px(l.x1 + 16))))];
 		return [flat('width', x0, x1, y1 + 16), tall('height', x1 + 4, x1 + 18)];
 	});
+
+	/* The view's figures in one block, 16 px right of the height, its top level with the car's: two columns when the
+	   room up to the stage's padding has them, else one, and none in a room under one column. */
+	const sheet = $derived.by(() => {
+		const rows = box && FIGURES[VIEWS[box.view].name];
+		const height = dims.find((d) => d.up);
+		if (!box || !rows || !height) return null;
+		const x = height.x + 16;
+		const cols = Math.min(2, Math.floor((stage.offsetLeft + stage.offsetWidth - PAD - x) / COL));
+		return cols > 0 ? { rows, x, y: box.y0, cols } : null;
+	});
 </script>
 
 <Panel {id}>
@@ -94,6 +126,11 @@
 			</svg>
 			{#each dims as dim (dim.name)}<span class:up={dim.up} data-dim={dim.name} style:left="{dim.x}px" style:top="{dim.y}px">{SPEC[dim.name]}</span>{/each}
 			{#each leaders as lead (lead.label)}<span class="lead" class:left={lead.side < 0} style:left="{lead.x}px" style:top="{lead.y}px">{lead.label}</span>{/each}
+			{#if sheet}
+				<dl class="sheet" style:left="{sheet.x}px" style:top="{sheet.y}px" style:grid-template-columns="repeat({sheet.cols}, {COL}px)">
+					{#each sheet.rows as [name, ...lines] (name)}<div><dt>{name}</dt>{#each lines as line (line)}<dd>{line}</dd>{/each}</div>{/each}
+				</dl>
+			{/if}
 		</div>
 		<div class="stage" bind:this={stage}></div>
 	</div>
@@ -189,6 +226,45 @@
 
 	.lock .dims span.lead {
 		transition-delay: 1.2s;
+	}
+
+	/* The figures, in ruled cells like the title block's (panels/title); they come in with the dimension figures. An
+	   odd last field takes the whole row. */
+	.sheet {
+		position: absolute;
+		display: grid;
+		margin: 0;
+		padding: 1px 0 0 1px;
+		font-family: var(--font-data);
+		font-size: 0.75rem;
+		line-height: 1.3;
+		opacity: 0;
+		transition: opacity 0.2s ease-out;
+	}
+
+	.sheet div {
+		margin: -1px 0 0 -1px;
+		padding: 0.2rem 0.6rem 0.25rem;
+		border: 1px solid var(--rule);
+		background: var(--paper);
+	}
+
+	.sheet div:last-child:nth-child(odd) {
+		grid-column: 1 / -1;
+	}
+
+	.sheet dt {
+		font-size: 0.6875rem;
+		color: var(--mute);
+	}
+
+	.sheet dd {
+		margin: 0;
+	}
+
+	.lock .sheet {
+		opacity: 1;
+		transition-delay: 0.8s;
 	}
 
 	/* The phone's band: the tile is a small box beside the time (+page.svelte), in line ink only, because ASCII is

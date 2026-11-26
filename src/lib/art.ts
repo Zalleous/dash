@@ -9,7 +9,6 @@ export const HOLD = 40; // seconds a lock holds, between the two wipes
 const EASE = 4; // seconds to settle into a lock, and to leave it
 export const WIPE = 2.5; // seconds for one ink to replace the other
 const TILT = 0.26; // camera pitch while the car turns, radians
-export const K = 0.8; // largest size of the turning car, as a share of its size in the side elevation
 const CELL = 4; // character cell width in CSS px; a cell is twice as high
 export const PAD = 8; // CSS px kept clear around the locked car
 const BOOT = 1500; // ms after page start before the first frame, so the boot wave stays smooth
@@ -41,18 +40,17 @@ const START = LOCKED[0] - 12; // the page opens 12 s before the first lock
 /* k: 0 turning, 1 locked. wipe: 0 ASCII, 1 line; from 1 to 2 the ASCII comes back. view: the view it is locked
    to, leaves or turns to. */
 type Pose = { yaw: number; pitch: number; k: number; wipe: number; view: number };
-/* Per view, n: the drawing scale is 1:n, s: CSS px per mesh unit at the lock, cap: the most that may be at each
-   step of the ease, where the lock pitches the car. turn: CSS px per mesh unit while the car turns. x, y: where
-   the car's centre sits. */
-export type View = { n: number[]; s: number[]; cap: number[][]; turn: number; x: number; y: number };
+/* Per view, n: the drawing scale is 1:n, s: CSS px per mesh unit at the lock. ring: CSS px per mesh unit of the
+   turning car, at each step of the ring of extents. cloud: the mesh's points. w, h, dim: the stage and the room for
+   the dimension lines. x, y: where the locked car's centre sits. */
+export type View = { n: number[]; s: number[]; ring: number[]; cloud: Float32Array; w: number; h: number; dim: number; x: number; y: number };
 type Mesh = {
 	vertices: Uint8Array;
 	indices: Uint16Array | Uint32Array;
 	half: number[];
 	axles: number[];
 	pod: number[];
-	reach: number[];
-	swoop: number[][][];
+	ring: number[][];
 	apex: number;
 	cloud: Float32Array;
 };
@@ -150,62 +148,35 @@ export function parse(buffer: ArrayBuffer): Mesh {
 		cloud.push(x, y, z);
 		if (data.getInt8(o + 9) >= 64) cloud.push(pod[0] + c * (x - pod[0]) + s * (y - pod[1]), pod[1] - s * (x - pod[0]) + c * (y - pod[1]), z);
 	}
-	/* How far the turning car reaches from its centre: sideways, up and down, at any yaw. */
-	const reach = [0, 0, 0];
-	for (let i = 0; i < cloud.length; i += 3) {
-		const r = Math.hypot(cloud[i], cloud[i + 2]);
-		reach[0] = Math.max(reach[0], r);
-		reach[1] = Math.max(reach[1], cloud[i + 1] * Math.cos(TILT) + r * Math.sin(TILT));
-		reach[2] = Math.max(reach[2], -cloud[i + 1] * Math.cos(TILT) + r * Math.sin(TILT));
-	}
-	/* A lock that pitches the car swings its far side up on the way. For each step of the ease into such a lock,
-	   and out of it: how far the car then reaches up and down from its centre. */
-	const steps = EASE * FPS;
-	const swoop = LOCKS.map((lock, view) => {
-		const list: number[][] = [];
-		for (let j = 0; lock.pitch && j <= steps; j++) {
-			const back = EASE * (1 - j / steps); // seconds from the lock
-			let up = 0;
-			let down = 0;
-			for (const t of [LOCKED[view] - back, AT[view + 1] + back]) {
-				const r = rotation(pose(t));
-				for (let i = 0; i < cloud.length; i += 3) {
-					const v = r[3] * cloud[i] + r[4] * cloud[i + 1] + r[5] * cloud[i + 2];
-					if (v > up) up = v;
-					else if (-v > down) down = -v;
-				}
-			}
-			list.push([up, down]);
-		}
-		return list;
-	});
+	const points = Float32Array.from(cloud);
 	return {
 		vertices: new Uint8Array(buffer, HEAD, count * STRIDE),
 		indices: indexBytes === 2 ? new Uint16Array(buffer, at, indexCount) : new Uint32Array(buffer, at, indexCount),
 		half: f.slice(0, 3),
 		axles: f.slice(3, 5),
 		pod,
-		reach,
-		swoop,
+		/* The extent of the turning car at every 2 degrees of yaw. */
+		ring: Array.from({ length: 180 }, (_, i) => extent(rotation({ yaw: (i * Math.PI) / 90, pitch: TILT }), points)),
 		apex,
-		cloud: Float32Array.from(cloud)
+		cloud: points
 	};
 }
 
 /* Fit each locked view into a stage of w by h CSS px, at a whole scale 1:n. dim is the room kept right of the car
-   and under it for the dimension lines. The turning car is smaller, so that it stays inside at any yaw. */
-export function fit(w: number, h: number, mesh: Pick<Mesh, 'half' | 'reach' | 'swoop'>, dim: number): View {
-	const x = (w - dim) / 2;
-	const y = (h - dim) / 2;
+   and under it for the dimension lines. The turning car fills the whole stage, at each yaw as large as the yaws
+   around it allow: a running min, so that it stays inside, then a running mean, so that its size does not pump. */
+export function fit(w: number, h: number, mesh: Pick<Mesh, 'half' | 'ring' | 'cloud'>, dim: number): View {
 	const n = LOCKS.map((lock) => {
 		const r = rotation(lock).map(Math.abs);
 		const [across, up] = [0, 3].map((row) => r[row] * mesh.half[0] + r[row + 1] * mesh.half[1] + r[row + 2] * mesh.half[2]);
 		return Math.max(1, Math.ceil(Math.max((LENGTH * across) / Math.max(1, w - dim - 2 * PAD), (LENGTH * up) / Math.max(1, h - dim - 2 * PAD))));
 	});
 	const s = n.map((n) => LENGTH / n / 2);
-	const cap = mesh.swoop.map((list) => list.map(([up, down]) => Math.min(y / up, (h - y) / down)));
-	const [radius, up, down] = mesh.reach;
-	return { n, s, cap, turn: Math.min(K * s[0], x / radius, y / up, (h - y) / down), x, y };
+	const fits = mesh.ring.map(([x0, x1, y0, y1]) => Math.min(Math.max(1, w - 2 * PAD) / (x1 - x0), Math.max(1, h - 2 * PAD) / (y1 - y0)));
+	const around = (list: number[], i: number, r: number) => Array.from({ length: 2 * r + 1 }, (_, d) => list.at((i + d - r) % list.length)!);
+	const low = fits.map((_, i) => Math.min(...around(fits, i, 1)));
+	const ring = low.map((_, i) => around(low, i, 2).reduce((a, b) => a + b) / 5);
+	return { n, s, ring, cloud: mesh.cloud, w, h, dim, x: (w - dim) / 2, y: (h - dim) / 2 };
 }
 
 /* Rows of the view rotation: screen right, up, and toward the viewer. */
@@ -217,21 +188,44 @@ function rotation(p: Pick<Pose, 'yaw' | 'pitch'>) {
 	return [cy, 0, sy, sp * sy, cp, -sp * cy, -cp * sy, sp, cp * cy];
 }
 
-/* CSS px per mesh unit: from the turning size to the view's locked size, and never over the view's cap. */
-function scale(p: Pose, v: View) {
-	const s = v.turn + (v.s[p.view] - v.turn) * p.k;
-	const cap = v.cap[p.view];
-	if (!cap.length) return s;
-	const j = (0.5 - Math.sin(Math.asin(1 - 2 * p.k) / 3)) * (cap.length - 1); // the step of the ease: smooth() undone
-	const i = Math.min(Math.floor(j), cap.length - 2);
-	return Math.min(s, cap[i] + (cap[i + 1] - cap[i]) * (j - i));
+/* The car's extent at unit scale under rotation r: left, right, bottom, top (y up). */
+export function extent(r: number[], cloud: Float32Array) {
+	const [a, b, c, d, e, f] = r;
+	let x0 = Infinity;
+	let x1 = -Infinity;
+	let y0 = Infinity;
+	let y1 = -Infinity;
+	for (let i = 0; i < cloud.length; i += 3) {
+		const x = a * cloud[i] + b * cloud[i + 1] + c * cloud[i + 2];
+		const y = d * cloud[i] + e * cloud[i + 1] + f * cloud[i + 2];
+		if (x < x0) x0 = x;
+		if (x > x1) x1 = x;
+		if (y < y0) y0 = y;
+		if (y > y1) y1 = y;
+	}
+	return [x0, x1, y0, y1];
 }
 
-/* 3x4, row-major: mesh units to CSS px (x right, y down) and to depth (larger is nearer). */
+/* 3x4, row-major: mesh units to CSS px (x right, y down) and to depth (larger is nearer). Locked, the car is at
+   the view's scale and in its place. On the way it is centred on its extent, as large as the ring allows, moving
+   to the locked size and place as it settles; the room for the dimension lines is given up only as far as it has
+   settled, and its own extent keeps it inside, also while it pitches into the plan view. */
 export function matrix(p: Pose, v: View): number[] {
 	const r = rotation(p);
-	const s = scale(p, v);
-	return [s * r[0], s * r[1], s * r[2], v.x, -s * r[3], -s * r[4], -s * r[5], v.y, r[6], r[7], r[8], 0];
+	let s = v.s[p.view];
+	let x = v.x;
+	let y = v.y;
+	if (p.k < 1) {
+		const [x0, x1, y0, y1] = extent(r, v.cloud);
+		const fits = Math.min((v.w - 2 * PAD - v.dim * p.k) / (x1 - x0), (v.h - 2 * PAD - v.dim * p.k) / (y1 - y0));
+		const j = ((((p.yaw / (2 * Math.PI)) % 1) + 1) % 1) * v.ring.length;
+		const i = Math.floor(j) % v.ring.length;
+		const turning = v.ring[i] + (v.ring[(i + 1) % v.ring.length] - v.ring[i]) * (j - i);
+		s = Math.min(fits, turning + (s - turning) * p.k);
+		x = v.x + (v.dim / 2) * (1 - p.k) - (s * (x0 + x1)) / 2;
+		y = v.y + (v.dim / 2) * (1 - p.k) + (s * (y0 + y1)) / 2;
+	}
+	return [s * r[0], s * r[1], s * r[2], x, -s * r[3], -s * r[4], -s * r[5], y, r[6], r[7], r[8], 0];
 }
 
 export const project = (p: number[], m: number[]) => [m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3], m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7]];
@@ -434,7 +428,8 @@ void main() {
 	o = vec4((red > 0.0 ? u_signal : u_ink) * ink, ink);
 }`;
 
-/* While a red alert stands the car blinks its lights. Alerts.svelte keeps this up to date. */
+/* While a red alert stands the car blinks its lights. The alerts panel (panels/alerts/Alerts.svelte) keeps this up to
+   date, so the lights blink only while that panel is on the board. */
 let hazard = false;
 export const blink = (on: boolean) => void (hazard = on);
 
@@ -561,7 +556,7 @@ export function start(canvas: Hooked, root: HTMLElement, url: string, tell: (art
 			if (p >= 0 && p < 1) {
 				const [a, b] = [fit(w0, h0, mesh, dim), fit(w1, h1, mesh, dim)];
 				const mix = (u: number, v: number) => u + (v - u) * p;
-				f = { ...f, s: a.s.map((s, i) => mix(s, b.s[i])), cap: a.cap.map((c, i) => c.map((u, j) => mix(u, b.cap[i][j]))), turn: mix(a.turn, b.turn) };
+				f = { ...f, s: a.s.map((s, i) => mix(s, b.s[i])) };
 			} else glide = undefined;
 		}
 		size = [st.width, st.height];
@@ -644,11 +639,11 @@ export function start(canvas: Hooked, root: HTMLElement, url: string, tell: (art
 	};
 	let U: ReturnType<typeof uniforms>;
 
-	function render(p: Pose, intro: number, lamps: number, tick: number, flash: boolean) {
+	function render(p: Pose, m: number[], intro: number, lamps: number, tick: number, flash: boolean) {
 		const box = boxes[p.view];
 		if (!mesh || !view || !box) return;
 		const r = rotation(p);
-		const s = scale(p, view);
+		const s = Math.hypot(m[0], m[2]);
 		gl!.bindFramebuffer(gl!.FRAMEBUFFER, gbuffer);
 		gl!.viewport(0, 0, W * ss, H * ss);
 		gl!.enable(gl!.DEPTH_TEST);
@@ -656,7 +651,7 @@ export function start(canvas: Hooked, root: HTMLElement, url: string, tell: (art
 		gl!.clear(gl!.COLOR_BUFFER_BIT | gl!.DEPTH_BUFFER_BIT);
 		gl!.useProgram(solid);
 		gl!.uniformMatrix3fv(U.rot, false, [r[0], r[3], r[6], r[1], r[4], r[7], r[2], r[5], r[8]]);
-		gl!.uniform4f(U.view, (2 * s) / cssW, (2 * s) / cssH, (2 * view.x) / cssW - 1, (2 * view.y) / cssH - 1);
+		gl!.uniform4f(U.view, (2 * s) / cssW, (2 * s) / cssH, (2 * m[3]) / cssW - 1, (2 * m[7]) / cssH - 1);
 		gl!.uniform3f(U.pod, mesh.pod[0], mesh.pod[1], mesh.pod[2] * lamps);
 		gl!.bindVertexArray(vao);
 		gl!.drawElements(gl!.TRIANGLES, mesh.indices.length, mesh.indices instanceof Uint16Array ? gl!.UNSIGNED_SHORT : gl!.UNSIGNED_INT, 0);
@@ -697,8 +692,8 @@ export function start(canvas: Hooked, root: HTMLElement, url: string, tell: (art
 	}
 
 	/* Tell the page what is on the sheet, when that changes. */
-	function report(p: Pose) {
-		const n = Math.round(LENGTH / 2 / scale(p, view!));
+	function report(p: Pose, m: number[]) {
+		const n = Math.round(LENGTH / 2 / Math.hypot(m[0], m[2]));
 		const yaw = p.k === 1 ? null : ((Math.round((p.yaw * 180) / Math.PI) % 360) + 360) % 360;
 		const lock = p.wipe >= 0.4 && p.wipe <= 1;
 		const key = [p.view, n, yaw, lock].join();
@@ -722,9 +717,10 @@ export function start(canvas: Hooked, root: HTMLElement, url: string, tell: (art
 		const flash = lit ?? (hazard && (still || tick % FPS < FPS / 2));
 		/* Draw only when the picture changes: while a lock holds, nothing but the blink is drawn. */
 		const key = [p.yaw, p.pitch, p.wipe, intro, lamps, flash].join();
-		if (key !== drawn) render(p, intro, lamps, tick, flash);
+		const m = matrix(p, view!);
+		if (key !== drawn) render(p, m, intro, lamps, tick, flash);
 		drawn = key;
-		report(p);
+		report(p, m);
 	}
 
 	/* For scripts/car.mjs: go to t seconds into the cycle, draw that frame now, and stay on it, with the
@@ -734,8 +730,9 @@ export function start(canvas: Hooked, root: HTMLElement, url: string, tell: (art
 		pinned = pose(t);
 		lit = flash;
 		drawn = '';
-		render(pinned, 1, 1, 0, flash);
-		report(pinned);
+		const m = matrix(pinned, view!);
+		render(pinned, m, 1, 1, 0, flash);
+		report(pinned, m);
 	};
 
 	const resized = new ResizeObserver((entries) => {

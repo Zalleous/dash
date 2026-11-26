@@ -72,11 +72,28 @@ clock, "now and next" (events) and the weather are bare. Together they fill the 
 - The cycle: the car turns as ASCII ink (12 drawn steps a second, one turn in 90 s, pitched 0.26 rad). It settles
   into a view (4 s), wipes to line ink (2.5 s), holds (40 s) and wipes back (2.5 s).
 - The views lock in this order: side elevation, front elevation, plan view, rear elevation.
+- While it turns, the car fills the stage, less 8 px all round, centred on its outline. Its size is worked out for
+  every 2° of yaw: the largest that fits that outline, then the smallest of each step and its two neighbours, so
+  that it stays inside, then the mean of each step and its four nearest, so that its size does not pump.
+- Locked, the car is at a whole scale 1:n, the largest that fits with 44 px kept free right of it and under it for
+  the dimension lines. The settle moves it from its turning size and place to its locked ones, and gives up that
+  room only as far as it has settled.
 - The start: the first frame comes 1.5 s after page start and plots in over 1.2 s. Then the headlamps rise
   (1.2 s). The page opens 12 s before the first lock.
 - At a lock, dimension lines draw in with the line ink, from factory figures in mm: side shows wheelbase (2595),
   length (4620) and height (1310); plan shows length and width (1745); front and rear show width and height.
 - Part names follow: a dot, a leader, a shelf, the label. A view shows all of its names or none, and only if they fit.
+  In the front and rear views they are left of the car.
+- The front and rear views also show factory figures for the 1986.5 car with the 7M-GE, with the dimension figures,
+  in one block of ruled cells like the title block's: 16 px right of the height, its top level with the car's.
+  Front shows engine (7M-GE inline 6, DOHC, 24 valves), displacement (2954 cc), bore × stroke (83.0 × 91.0 mm) and
+  power (200 hp @ 6000 rpm). Rear shows manual (W58 5-speed), automatic (A340E 4-speed), tyres (225/50VR16), brakes
+  (vented discs, front and rear) and fuel tank (70 L).
+- The block has two columns of 150 px when the room up to the stage's padding has them, else one, and none in a
+  room under 150 px. An odd last field takes the whole row.
+- Each figure is found in two sources, named beside it in `Car.svelte`: Consumer Guide, netcarshow.com, Wikipedia,
+  cygnusx1.net, Le Guide de l'auto 1987, Hagerty and velocityjournal.com. Compression, torque, final drive, curb
+  weight and track are left out: their sources disagree, or only one has them.
 - While a red alert stands, the car blinks its lights in `--signal`: half a second on, half a second off. The alerts
   panel tells it, so the lights blink only while that panel is on the board (shown or hidden).
 - Without WebGL2 the tile stays empty. A lost WebGL context is not restored.
@@ -338,7 +355,7 @@ Run `npm run check` and `npm test`.
   is optional. Start `npm run preview` first:
 
   ```sh
-  PLAYWRIGHT_FROM=/path/to/a/project/with/playwright node scripts/car.mjs http://localhost:4173 [folder for screenshots]
+  PLAYWRIGHT_FROM=/path/to/a/project/with/playwright node scripts/car.mjs http://localhost:4173 [folder for screenshots] [light|dark]
   ```
 
   It takes about 80 s. Its frame-time limits were set on one laptop GPU, so a slower GPU may fail them.
